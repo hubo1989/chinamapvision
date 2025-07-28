@@ -1,0 +1,1413 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>中国地图可视化数据生成工具</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+            background: #f0f2f5;
+            min-height: 100vh;
+            color: rgba(0, 0, 0, 0.85);
+        }
+
+        .ant-layout {
+            min-height: 100vh;
+        }
+
+        .ant-header {
+            background: #fff;
+            padding: 0 24px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 64px;
+        }
+
+        .ant-header h1 {
+            color: rgba(0, 0, 0, 0.85);
+            font-size: 20px;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .ant-content {
+            padding: 24px;
+            display: flex;
+            gap: 24px;
+            flex: 1;
+        }
+
+        .ant-card {
+            background: #fff;
+            border-radius: 6px;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px 0 rgba(0, 0, 0, 0.02);
+            border: 1px solid #f0f0f0;
+        }
+
+        .ant-card-head {
+            padding: 12px 16px;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 15px;
+            font-weight: 500;
+            color: rgba(0, 0, 0, 0.85);
+        }
+
+        .ant-card-body {
+            padding: 16px;
+        }
+
+        .sidebar {
+            width: 380px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            max-height: calc(100vh - 112px);
+            overflow-y: auto;
+        }
+
+        .map-container {
+            flex: 1;
+            position: relative;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            min-height: calc(100vh - 112px);
+            overflow: hidden;
+        }
+
+        .map-wrapper {
+            position: relative;
+            width: 100%;
+            height: calc(100vh - 200px);
+            min-height: 600px;
+            overflow: hidden;
+            border: 1px solid #d9d9d9;
+            border-radius: 6px;
+            background: #fafafa;
+        }
+
+        .map-svg {
+            width: 100%;
+            height: 100%;
+            cursor: grab;
+            transition: transform 0.1s ease-out;
+        }
+
+        .map-svg:active {
+            cursor: grabbing;
+        }
+
+        /* 缩放按钮样式 */
+        .zoom-btn {
+            width: 32px !important;
+            height: 32px !important;
+            border: 1px solid #d9d9d9;
+            background: #fff;
+            border-radius: 50%;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            font-weight: 500;
+            color: rgba(0, 0, 0, 0.65);
+            transition: all 0.2s ease;
+            margin: 0 4px;
+            user-select: none;
+            flex-shrink: 0;
+        }
+
+        .zoom-btn:hover {
+            border-color: #40a9ff;
+            color: #40a9ff;
+            background: #f6ffed;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(64, 169, 255, 0.2);
+        }
+
+        .zoom-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 1px 2px rgba(64, 169, 255, 0.3);
+        }
+
+        .zoom-btn-out:hover {
+            background: #fff2f0;
+            border-color: #ff7875;
+            color: #ff7875;
+        }
+
+        .zoom-btn-in:hover {
+            background: #f6ffed;
+            border-color: #52c41a;
+            color: #52c41a;
+        }
+
+        .province {
+            fill: #f5f5f5;
+            stroke: #ffffff;
+            stroke-width: 1;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.645, 0.045, 0.355, 1);
+        }
+
+        .province:hover {
+            stroke: #40a9ff;
+            stroke-width: 2;
+            filter: brightness(1.1);
+        }
+
+        .province-label {
+            font-size: 12px;
+            font-weight: 500;
+            fill: rgba(0, 0, 0, 0.85);
+            text-anchor: middle;
+            pointer-events: none;
+            user-select: none;
+            text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.8);
+        }
+        
+        /* 确保普通省份标签在特殊省份背景之上 */
+        .province-label:not([data-province-label="北京"]):not([data-province-label="天津"]):not([data-province-label="上海"]):not([data-province-label="香港"]):not([data-province-label="澳门"]):not([data-province-label="台湾"]):not([data-province-label="海南"]) {
+            z-index: 10;
+        }
+        
+        .province-name {
+            font-weight: 600;
+        }
+        
+        .province-value {
+            font-weight: 700;
+            fill: #1890ff;
+        }
+
+        /* 指示线和指示点样式 */
+        .indicator-line {
+            stroke: #666;
+            stroke-width: 1;
+            stroke-dasharray: 2,2;
+            opacity: 0.8;
+        }
+
+        .indicator-dot {
+            fill: #666;
+            opacity: 0.9;
+        }
+
+        /* 特殊省份标签背景 */
+        .special-label-bg {
+            fill: rgba(255, 255, 255, 0.9);
+            stroke: #d9d9d9;
+            stroke-width: 1;
+            rx: 4;
+            ry: 4;
+        }
+
+        .ant-form-item {
+            margin-bottom: 10px;
+        }
+
+        .ant-form-item-label {
+            font-size: 14px;
+            color: rgba(0, 0, 0, 0.85);
+            margin-bottom: 6px;
+            display: block;
+            font-weight: 500;
+        }
+
+        .ant-input {
+            width: 100%;
+            height: 80px;
+            border: 1px solid #d9d9d9;
+            border-radius: 6px;
+            padding: 8px;
+            font-size: 13px;
+            resize: vertical;
+            transition: all 0.3s;
+            font-family: inherit;
+        }
+
+        .ant-input:focus {
+            outline: none;
+            border-color: #40a9ff;
+            box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+        }
+
+        .ant-input:hover {
+            border-color: #40a9ff;
+        }
+
+        .color-input-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .color-input-group label {
+            font-size: 14px;
+            color: rgba(0, 0, 0, 0.65);
+            min-width: 80px;
+        }
+
+        .ant-color-picker {
+            width: 40px;
+            height: 32px;
+            border: 1px solid #d9d9d9;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .ant-color-picker:hover {
+            border-color: #40a9ff;
+        }
+
+        .ant-input-number {
+            width: 80px;
+            height: 32px;
+            padding: 4px 11px;
+            border: 1px solid #d9d9d9;
+            border-radius: 6px;
+            text-align: center;
+            transition: all 0.3s;
+        }
+
+        .ant-input-number:focus {
+            outline: none;
+            border-color: #40a9ff;
+            box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+        }
+
+        .ant-btn {
+            background: #1890ff;
+            color: #fff;
+            border: 1px solid #1890ff;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 400;
+            transition: all 0.3s cubic-bezier(0.645, 0.045, 0.355, 1);
+            width: 100%;
+            margin-bottom: 6px;
+            height: 28px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .ant-btn:hover {
+            background: #40a9ff;
+            border-color: #40a9ff;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(24, 144, 255, 0.2);
+        }
+
+        .ant-btn:active {
+            transform: translateY(0);
+        }
+
+        .ant-btn-default {
+            background: #fff;
+            color: rgba(0, 0, 0, 0.85);
+            border-color: #d9d9d9;
+        }
+
+        .ant-btn-default:hover {
+            background: #fff;
+            color: #40a9ff;
+            border-color: #40a9ff;
+        }
+
+        .ant-btn-danger {
+            background: #ff4d4f;
+            border-color: #ff4d4f;
+        }
+
+        .ant-btn-danger:hover {
+            background: #ff7875;
+            border-color: #ff7875;
+        }
+
+        .info-panel {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: #fff;
+            padding: 16px;
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            max-width: 280px;
+            z-index: 1000;
+            display: none;
+            border: 1px solid #f0f0f0;
+        }
+
+        .info-panel h4 {
+            margin: 0 0 8px 0;
+            color: rgba(0, 0, 0, 0.85);
+            font-size: 16px;
+            font-weight: 500;
+        }
+
+        .info-panel p {
+            margin: 0;
+            color: rgba(0, 0, 0, 0.65);
+            font-size: 14px;
+        }
+
+        .legend {
+            margin-top: 16px;
+        }
+
+        .legend h4 {
+            margin-bottom: 12px;
+            color: rgba(0, 0, 0, 0.85);
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+            font-size: 12px;
+            color: rgba(0, 0, 0, 0.65);
+        }
+
+        .legend-color {
+            width: 16px;
+            height: 12px;
+            border-radius: 2px;
+            border: 1px solid #f0f0f0;
+        }
+
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 600px;
+            font-size: 16px;
+            color: rgba(0, 0, 0, 0.45);
+        }
+
+        .data-format-help {
+            background: #f6ffed;
+            border: 1px solid #b7eb8f;
+            border-radius: 6px;
+            padding: 12px;
+            margin-top: 12px;
+            font-size: 12px;
+            color: rgba(0, 0, 0, 0.65);
+        }
+
+        .data-format-help h5 {
+            margin: 0 0 8px 0;
+            color: #52c41a;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .data-format-help code {
+            background: rgba(0, 0, 0, 0.06);
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+        }
+
+        @media (max-width: 1200px) {
+            .ant-content {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+            }
+            
+            .map-svg {
+                height: 400px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="ant-layout">
+        <header class="ant-header">
+            <h1>🗺️ 中国地图可视化数据生成工具</h1>
+        </header>
+
+        <div class="ant-content">
+            <div class="sidebar">
+                <div class="ant-card">
+                    <div class="ant-card-head">📊 数据输入</div>
+                    <div class="ant-card-body">
+                        <div class="ant-form-item">
+                            <label class="ant-form-item-label">省份数据</label>
+                            <textarea id="dataInput" class="ant-input" placeholder="支持多种格式：\n基础格式：省份,数值\n完整格式：省份,数值,字号,字色,背景色\n\n示例：\n北京,1000\n上海,800,14,#ffffff,#ff4d4f\n广东,1200,12,#000000,#52c41a">北京,1000,14,#ffffff,#722ed1
+天津,950,12,#ffffff,#13c2c2
+河北,900,12,#ffffff,#52c41a
+山西,850,12,#ffffff,#faad14
+内蒙古,800,12,#ffffff,#fa8c16
+辽宁,750,12,#ffffff,#1890ff
+吉林,700,12,#ffffff,#eb2f96
+黑龙江,650,12,#ffffff,#722ed1
+上海,1200,14,#ffffff,#1890ff
+江苏,1100,13,#ffffff,#fa8c16
+浙江,1050,13,#ffffff,#faad14
+安徽,950,12,#ffffff,#52c41a
+福建,900,12,#ffffff,#13c2c2
+江西,850,12,#ffffff,#fa541c
+山东,1000,12,#ffffff,#52c41a
+河南,950,12,#ffffff,#faad14
+湖北,900,12,#ffffff,#fa541c
+湖南,850,12,#ffffff,#eb2f96
+广东,1300,14,#ffffff,#ff4d4f
+广西,800,12,#ffffff,#13c2c2
+海南,700,12,#ffffff,#1890ff
+重庆,900,12,#ffffff,#722ed1
+四川,950,12,#ffffff,#eb2f96
+贵州,750,12,#ffffff,#fa8c16
+云南,800,12,#ffffff,#faad14
+西藏,600,12,#ffffff,#52c41a
+陕西,850,12,#ffffff,#fa541c
+甘肃,700,12,#ffffff,#13c2c2
+青海,650,12,#ffffff,#1890ff
+宁夏,680,12,#ffffff,#eb2f96
+新疆,720,12,#ffffff,#722ed1
+香港,1100,12,#ffffff,#fa8c16
+澳门,950,12,#ffffff,#faad14
+台湾,1000,12,#ffffff,#52c41a</textarea>
+                            <div class="data-format-help">
+                                <h5>📝 数据格式说明</h5>
+                                <p><strong>基础格式：</strong><code>省份,数值</code></p>
+                                <p><strong>完整格式：</strong><code>省份,数值,字号,字色,背景色</code></p>
+                                <p><strong>字号：</strong>数字，如 12、14、16</p>
+                                <p><strong>颜色：</strong>十六进制，如 #ffffff、#ff4d4f</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="ant-card">
+                    <div class="ant-card-head">⚡ 操作</div>
+                    <div class="ant-card-body">
+                        <button class="ant-btn" onclick="updateMap()">🔄 更新地图</button>
+                        <button class="ant-btn ant-btn-default" onclick="clearData()">🗑️ 清空数据</button>
+                        <button class="ant-btn ant-btn-default" onclick="downloadMap()">📥 下载地图</button>
+                    </div>
+                </div>
+
+                <div class="ant-card">
+                    <div class="ant-card-head">🔍 缩放控制</div>
+                    <div class="ant-card-body">
+                        <div class="color-input-group">
+                            <label>缩放比例:</label>
+                            <button class="zoom-btn zoom-btn-out" onclick="zoomOut()" title="缩小5%">−</button>
+                            <input type="range" id="zoomSlider" min="0.5" max="3" step="0.05" value="1" style="flex: 1; margin: 0 8px;">
+                            <button class="zoom-btn zoom-btn-in" onclick="zoomIn()" title="放大5%">+</button>
+                            <span id="zoomValue" style="min-width: 40px; text-align: center; margin-left: 8px;">100%</span>
+                        </div>
+                        <button class="ant-btn ant-btn-default" onclick="resetZoom()">🔄 重置缩放</button>
+                    </div>
+                </div>
+
+                <div class="ant-card">
+                    <div class="ant-card-head">📝 字号控制</div>
+                    <div class="ant-card-body">
+                        <button class="ant-btn ant-btn-default" onclick="adjustFontSize(1)">🔍 字号增大</button>
+                        <button class="ant-btn ant-btn-default" onclick="adjustFontSize(-1)">🔍 字号缩小</button>
+                        <button class="ant-btn ant-btn-default" onclick="resetFontSize()">🔄 重置字号</button>
+                    </div>
+                </div>
+
+                <div class="ant-card">
+                    <div class="ant-card-head">🎨 默认样式</div>
+                    <div class="ant-card-body">
+                        <div class="color-input-group">
+                            <label>无数据颜色:</label>
+                            <input type="color" id="defaultColor" class="ant-color-picker" value="#f5f5f5">
+                        </div>
+                        <div class="color-input-group">
+                            <label>边框颜色:</label>
+                            <input type="color" id="strokeColor" class="ant-color-picker" value="#ffffff">
+                        </div>
+                        <div class="color-input-group">
+                            <label>默认字号:</label>
+                            <input type="number" id="defaultFontSize" class="ant-input-number" value="12" min="8" max="20">
+                            <span style="color: rgba(0, 0, 0, 0.45);">px</span>
+                        </div>
+                        
+                        <div class="legend">
+                            <h4>📈 图例说明</h4>
+                            <div class="legend-item">
+                                <div class="legend-color" style="background: #f5f5f5;"></div>
+                                <span>无数据区域</span>
+                            </div>
+                            <div class="legend-item">
+                                <div class="legend-color" style="background: #1890ff;"></div>
+                                <span>有数据区域</span>
+                            </div>
+                            <div class="legend-item">
+                                <div class="legend-color" style="background: linear-gradient(to right, #f5f5f5, #1890ff);"></div>
+                                <span>数值渐变色</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="map-container">
+                <div class="ant-card" style="width: 100%; height: fit-content;">
+                    <div class="ant-card-head">🗺️ 中国地图</div>
+                    <div class="ant-card-body">
+                        <div class="loading" id="loading">正在加载地图数据...</div>
+                        <div class="map-wrapper" id="mapWrapper" style="display: none;">
+                            <svg id="mapSvg" class="map-svg"></svg>
+                        </div>
+                        
+                        <!-- 坐标显示面板 -->
+                        <div class="coordinate-panel" id="coordinatePanel" style="position: absolute; bottom: 10px; left: 10px; background: rgba(255, 255, 255, 0.9); padding: 8px 12px; border-radius: 4px; font-size: 12px; color: rgba(0, 0, 0, 0.65); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); display: none;">
+                            <div>鼠标坐标:</div>
+                            <div id="mouseCoordinates">X: --, Y: --</div>
+                            <div id="geoCoordinates">经度: --, 纬度: --</div>
+                        </div>
+                        
+                        <div class="info-panel" id="infoPanel">
+                            <h4 id="selectedProvince">选中省份</h4>
+                            <p id="selectedData">数据值: --</p>
+                            <p id="selectedStyle">样式: --</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let provinceData = {};
+        let svgElement = null;
+        let geoData = null;
+
+        // 省份名称映射（处理数据中的不同命名）
+        const provinceNameMap = {
+            '北京市': '北京',
+            '天津市': '天津',
+            '河北省': '河北',
+            '山西省': '山西',
+            '内蒙古自治区': '内蒙古',
+            '辽宁省': '辽宁',
+            '吉林省': '吉林',
+            '黑龙江省': '黑龙江',
+            '上海市': '上海',
+            '江苏省': '江苏',
+            '浙江省': '浙江',
+            '安徽省': '安徽',
+            '福建省': '福建',
+            '江西省': '江西',
+            '山东省': '山东',
+            '河南省': '河南',
+            '湖北省': '湖北',
+            '湖南省': '湖南',
+            '广东省': '广东',
+            '广西壮族自治区': '广西',
+            '海南省': '海南',
+            '重庆市': '重庆',
+            '四川省': '四川',
+            '贵州省': '贵州',
+            '云南省': '云南',
+            '西藏自治区': '西藏',
+            '陕西省': '陕西',
+            '甘肃省': '甘肃',
+            '青海省': '青海',
+            '宁夏回族自治区': '宁夏',
+            '新疆维吾尔自治区': '新疆',
+            '香港特别行政区': '香港',
+            '澳门特别行政区': '澳门',
+            '台湾省': '台湾'
+        };
+
+        // 特殊省份标注位置调整（只有这些省份需要外移标签）
+        const specialProvinces = {
+            '北京': { offsetX: -100, offsetY: -100, needLine: true },
+            '天津': { offsetX: 140, offsetY: 20, needLine: true }, // 调整offsetX为180
+            '上海': { offsetX: 80, offsetY: -40, needLine: true },
+            '台湾': { offsetX: 160, offsetY: 50, needLine: true }, // 调整offsetY为50
+            '海南': { offsetX: -80, offsetY: 50, needLine: true }, // 调整offsetY为50
+            '香港': { offsetX: 160, offsetY: 50, needLine: true }, // 调整offsetY为50
+            '澳门': { offsetX: 100, offsetY: 50, needLine: true } // 调整offsetY为50
+        };
+
+        // 只有特殊省份需要外移标签，其他省份在原位置显示
+
+        // 加载本地GeoJSON数据
+        async function loadGeoData() {
+            try {
+                const response = await fetch('./china-geojson/china.json');
+                if (!response.ok) {
+                    throw new Error('无法加载地图数据');
+                }
+                geoData = await response.json();
+                initializeMap();
+            } catch (error) {
+                console.error('加载地图数据失败:', error);
+                document.getElementById('loading').textContent = '地图数据加载失败，请检查文件路径';
+            }
+        }
+
+        // 初始化地图
+        function initializeMap() {
+            if (!geoData) return;
+// 隐藏加载提示，显示地图
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('mapWrapper').style.display = 'block';
+            
+            // 初始化地图拖动功能
+            initMapDrag();
+
+            svgElement = document.getElementById('mapSvg');
+            renderMap();
+            // 初始化时应用默认样式，不解析数据
+            applyDefaultStyles();
+        }
+
+        // 渲染地图
+        function renderMap() {
+            if (!geoData || !svgElement) return;
+
+            // 清空SVG
+            svgElement.innerHTML = '';
+
+            // 计算边界框
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            
+            geoData.features.forEach(feature => {
+                if (feature.geometry.type === 'Polygon') {
+                    feature.geometry.coordinates[0].forEach(coord => {
+                        minX = Math.min(minX, coord[0]);
+                        maxX = Math.max(maxX, coord[0]);
+                        minY = Math.min(minY, coord[1]);
+                        maxY = Math.max(maxY, coord[1]);
+                    });
+                } else if (feature.geometry.type === 'MultiPolygon') {
+                    feature.geometry.coordinates.forEach(polygon => {
+                        polygon[0].forEach(coord => {
+                            minX = Math.min(minX, coord[0]);
+                            maxX = Math.max(maxX, coord[0]);
+                            minY = Math.min(minY, coord[1]);
+                            maxY = Math.max(maxY, coord[1]);
+                        });
+                    });
+                }
+            });
+
+            const width = 1200; // 适当增加宽度以容纳少量外移标签
+            const height = 800; // 适当增加高度以容纳少量外移标签
+            const padding = 100; // 适当内边距
+            
+            const scaleX = (width - 2 * padding) / (maxX - minX);
+            const scaleY = (height - 2 * padding) / (maxY - minY);
+            const scale = Math.min(scaleX, scaleY);
+            
+            const offsetX = (width - (maxX - minX) * scale) / 2;
+            const offsetY = (height - (maxY - minY) * scale) / 2;
+
+            svgElement.setAttribute('viewBox', `0 0 ${width} ${height}`);
+            
+            // 存储坐标转换参数供鼠标事件使用
+            svgElement.mapParams = {
+                minX, minY, maxX, maxY,
+                width, height, scale, offsetX, offsetY
+            };
+            
+            // 添加鼠标移动事件监听器显示坐标
+            svgElement.addEventListener('mousemove', handleMouseMove);
+            svgElement.addEventListener('mouseenter', showCoordinatePanel);
+            svgElement.addEventListener('mouseleave', hideCoordinatePanel);
+
+            // 添加地图整体背景
+            const mapBackground = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            mapBackground.setAttribute('x', '0');
+            mapBackground.setAttribute('y', '0');
+            mapBackground.setAttribute('width', width);
+            mapBackground.setAttribute('height', height);
+            mapBackground.setAttribute('fill', '#f5f5f5'); // 淡灰色背景
+            svgElement.appendChild(mapBackground);
+
+            // 第一阶段：渲染所有省份路径和特殊省份的背景元素
+            geoData.features.forEach(feature => {
+                const provinceName = normalizeProvinceName(feature.properties.name);
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                let pathData = '';
+                
+                if (feature.geometry.type === 'Polygon') {
+                    feature.geometry.coordinates[0].forEach((coord, index) => {
+                        const x = (coord[0] - minX) * scale + offsetX;
+                        const y = height - ((coord[1] - minY) * scale + offsetY);
+                        pathData += (index === 0 ? 'M' : 'L') + x + ',' + y;
+                    });
+                    pathData += 'Z';
+                } else if (feature.geometry.type === 'MultiPolygon') {
+                    feature.geometry.coordinates.forEach(polygon => {
+                        polygon[0].forEach((coord, index) => {
+                            const x = (coord[0] - minX) * scale + offsetX;
+                            const y = height - ((coord[1] - minY) * scale + offsetY);
+                            pathData += (index === 0 ? 'M' : 'L') + x + ',' + y;
+                        });
+                        pathData += 'Z';
+                    });
+                }
+                
+                if (pathData) {
+                    path.setAttribute('d', pathData);
+                    path.setAttribute('class', 'province');
+                    path.setAttribute('data-province', provinceName);
+                    
+                    // 添加事件监听
+                    path.addEventListener('mouseenter', (e) => showTooltip(e, provinceName));
+                    path.addEventListener('mouseleave', hideTooltip);
+                    path.addEventListener('click', (e) => selectProvince(e, provinceName));
+                    
+                    svgElement.appendChild(path);
+                }
+            });
+            
+            // 第二阶段：渲染特殊省份的指示线、指示点和背景
+            geoData.features.forEach(feature => {
+                const provinceName = normalizeProvinceName(feature.properties.name);
+                
+                if (feature.properties.cp && specialProvinces[provinceName]) {
+                    let labelX = (feature.properties.cp[0] - minX) * scale + offsetX;
+                    let labelY = height - ((feature.properties.cp[1] - minY) * scale + offsetY);
+                    
+                    const originalX = labelX;
+                    const originalY = labelY;
+                    
+                    labelX += specialProvinces[provinceName].offsetX;
+                    labelY += specialProvinces[provinceName].offsetY;
+                    
+                    // 添加指示线
+                    if (specialProvinces[provinceName].needLine) {
+                        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                        line.setAttribute('x1', originalX);
+                        line.setAttribute('y1', originalY);
+                        line.setAttribute('x2', labelX - 5);
+                        line.setAttribute('y2', labelY);
+                        line.setAttribute('class', 'indicator-line');
+                        line.setAttribute('data-province-line', provinceName);
+                        svgElement.appendChild(line);
+                        
+                        // 添加指示点
+                        const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                        dot.setAttribute('cx', originalX);
+                        dot.setAttribute('cy', originalY);
+                        dot.setAttribute('r', '2');
+                        dot.setAttribute('class', 'indicator-dot');
+                        dot.setAttribute('data-province-dot', provinceName);
+                        svgElement.appendChild(dot);
+                        
+                        // 为特殊省份添加标签背景（扩大标签）
+                        const bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                        const labelWidth = Math.max(provinceName.length * 14 + 20, 80); // 最小宽度80px
+                        const labelHeight = 40; // 增加高度以容纳名称和数据
+                        bgRect.setAttribute('x', labelX - labelWidth/2);
+                        bgRect.setAttribute('y', labelY - labelHeight/2);
+                        bgRect.setAttribute('width', labelWidth);
+                        bgRect.setAttribute('height', labelHeight);
+                        bgRect.setAttribute('class', 'special-label-bg');
+                        bgRect.setAttribute('data-province-bg', provinceName);
+                        bgRect.setAttribute('rx', '4'); // 圆角
+                        svgElement.appendChild(bgRect);
+                    }
+                }
+            });
+            
+            // 第三阶段：渲染所有省份标签（确保在背景之上）
+            geoData.features.forEach(feature => {
+                const provinceName = normalizeProvinceName(feature.properties.name);
+                
+                if (feature.properties.cp) {
+                    const labelGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                    let labelX = (feature.properties.cp[0] - minX) * scale + offsetX;
+                    let labelY = height - ((feature.properties.cp[1] - minY) * scale + offsetY);
+                    
+                    // 只有特殊省份使用外移标签
+                    if (specialProvinces[provinceName]) {
+                        labelX += specialProvinces[provinceName].offsetX;
+                        labelY += specialProvinces[provinceName].offsetY;
+                    }
+                    
+                    // 省份名称
+                    const nameLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    nameLabel.setAttribute('x', labelX);
+                    nameLabel.setAttribute('y', specialProvinces[provinceName] ? labelY - 5 : labelY - 8);
+                    nameLabel.setAttribute('class', 'province-label province-name');
+                    nameLabel.setAttribute('data-province-label', provinceName);
+                    nameLabel.setAttribute('text-anchor', 'middle'); // 居中对齐
+                    nameLabel.textContent = provinceName;
+                    
+                    // 数据值标签
+                    const valueLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    valueLabel.setAttribute('x', labelX);
+                    valueLabel.setAttribute('y', specialProvinces[provinceName] ? labelY + 10 : labelY + 8);
+                    valueLabel.setAttribute('class', 'province-label province-value');
+                    valueLabel.setAttribute('data-province-value', provinceName);
+                    valueLabel.setAttribute('text-anchor', 'middle'); // 居中对齐
+                    valueLabel.style.fontSize = '10px';
+                    valueLabel.style.fontWeight = '700';
+                    valueLabel.textContent = '';
+                    
+                    labelGroup.appendChild(nameLabel);
+                    labelGroup.appendChild(valueLabel);
+                    svgElement.appendChild(labelGroup);
+                }
+            });
+        }
+
+        // 标准化省份名称
+        function normalizeProvinceName(name) {
+            // 如果是完整名称，直接映射到简称
+            if (provinceNameMap[name]) {
+                return provinceNameMap[name];
+            }
+            
+            // 如果是简称，查找对应的完整名称，然后返回简称
+            for (const [fullName, shortName] of Object.entries(provinceNameMap)) {
+                if (shortName === name) {
+                    return shortName;
+                }
+            }
+            
+            // 如果都没找到，去掉后缀返回
+            return name.replace(/省|市|自治区|壮族|维吾尔|回族/g, '');
+        }
+
+        // 解析数据（支持扩展格式）
+        function parseData() {
+            const input = document.getElementById('dataInput').value.trim();
+            provinceData = {};
+            
+            if (!input) {
+                // 清空数据时确保provinceData为空对象
+                return;
+            }
+            
+            const lines = input.split('\n');
+            lines.forEach(line => {
+                const parts = line.trim().split(',');
+                if (parts.length >= 2) {
+                    let province = parts[0].trim();
+                    const value = parseFloat(parts[1].trim());
+                    
+                    // 标准化省份名称：如果输入的是简称，查找对应的标准名称
+                    const normalizedName = normalizeProvinceName(province);
+                    
+                    if (!isNaN(value)) {
+                        provinceData[normalizedName] = {
+                            value: value,
+                            fontSize: parts[2] ? parseInt(parts[2].trim()) : null,
+                            fontColor: parts[3] ? parts[3].trim() : null,
+                            backgroundColor: parts[4] ? parts[4].trim() : null
+                        };
+                    }
+                }
+            });
+        }
+
+        // 应用默认样式（初始化时使用）
+        function applyDefaultStyles() {
+            const defaultColor = document.getElementById('defaultColor').value;
+            const strokeColor = document.getElementById('strokeColor').value;
+            const defaultFontSize = document.getElementById('defaultFontSize').value;
+            
+            // 为所有省份应用默认样式
+            document.querySelectorAll('.province').forEach(path => {
+                path.style.fill = defaultColor;
+                path.style.strokeWidth = '1px';
+                path.style.stroke = strokeColor;
+            });
+            
+            // 显示所有省份名称标签
+            document.querySelectorAll('.province-name').forEach(label => {
+                label.style.fontSize = defaultFontSize + 'px';
+                label.style.fill = '#000000';
+                label.style.fontWeight = '600';
+                label.style.display = 'block';
+            });
+            
+            // 隐藏数据值标签
+            document.querySelectorAll('.province-value').forEach(label => {
+                label.style.display = 'none';
+            });
+            
+            // 更新特殊省份标签背景色
+            document.querySelectorAll('.special-label-bg').forEach(bgRect => {
+                bgRect.style.fill = defaultColor;
+                bgRect.style.stroke = strokeColor;
+                bgRect.style.strokeWidth = '1px';
+            });
+        }
+
+        // 更新地图
+        function updateMap() {
+            parseData();
+            
+            const defaultColor = document.getElementById('defaultColor').value;
+            const dataColor = '#1890ff'; // 固定数据颜色
+            const strokeColor = document.getElementById('strokeColor').value;
+            const defaultFontSize = document.getElementById('defaultFontSize').value;
+            const defaultFontColor = '#000000'; // 固定默认字色
+            
+            // 计算数据范围
+            const values = Object.values(provinceData).map(d => d.value);
+            const minValue = Math.min(...values);
+            const maxValue = Math.max(...values);
+            
+            // 更新省份颜色和样式
+            document.querySelectorAll('.province').forEach(path => {
+                const provinceName = path.getAttribute('data-province');
+                const data = provinceData[provinceName];
+                
+                path.style.strokeWidth = '1px';
+                path.style.stroke = strokeColor;
+                
+                if (data !== undefined) {
+                    // 使用自定义背景色或计算颜色深浅
+                    if (data.backgroundColor) {
+                        path.style.fill = data.backgroundColor;
+                    } else {
+                        const intensity = values.length > 1 ? (data.value - minValue) / (maxValue - minValue) : 0.5;
+                        const color = interpolateColor(defaultColor, dataColor, intensity);
+                        path.style.fill = color;
+                    }
+                } else {
+                    path.style.fill = defaultColor;
+                }
+            });
+            
+            // 更新省份名称标签样式
+            document.querySelectorAll('.province-name').forEach(label => {
+                const provinceName = label.getAttribute('data-province-label');
+                const data = provinceData[provinceName];
+                
+                if (data !== undefined) {
+                    // 有数据时显示省份名称
+                    label.style.fontSize = (data.fontSize || defaultFontSize) + 'px';
+                    label.style.fill = data.fontColor || defaultFontColor;
+                    label.style.fontWeight = '600';
+                    label.style.display = 'block';
+                } else {
+                    // 无数据时隐藏省份名称
+                    label.style.display = 'none';
+                }
+            });
+            
+            // 更新数据值标签
+            document.querySelectorAll('.province-value').forEach(label => {
+                const provinceName = label.getAttribute('data-province-value');
+                const data = provinceData[provinceName];
+                
+                if (data !== undefined) {
+                    // 显示数据值
+                    label.textContent = data.value;
+                    label.style.fill = data.fontColor || '#1890ff';
+                    label.style.fontSize = Math.max(8, (data.fontSize || defaultFontSize) - 2) + 'px';
+                    label.style.fontWeight = '700';
+                    label.style.display = 'block';
+                } else {
+                    // 隐藏数据值
+                    label.textContent = '';
+                    label.style.display = 'none';
+                }
+            });
+            
+            // 更新特殊省份标签背景色，使其与地图背景色一致
+            document.querySelectorAll('.special-label-bg').forEach(bgRect => {
+                const provinceName = bgRect.getAttribute('data-province-bg');
+                const data = provinceData[provinceName];
+                const provinceElement = document.querySelector(`[data-province="${provinceName}"]`);
+                
+                if (data !== undefined && provinceElement) {
+                    // 有数据时显示背景
+                    const provinceFill = provinceElement.style.fill || defaultColor;
+                    bgRect.style.fill = provinceFill;
+                    bgRect.style.stroke = strokeColor;
+                    bgRect.style.strokeWidth = '1px';
+                    bgRect.style.display = 'block';
+                } else {
+                    // 无数据时隐藏背景
+                    bgRect.style.display = 'none';
+                }
+            });
+            
+            // 更新指示线的显示/隐藏
+            document.querySelectorAll('.indicator-line').forEach(line => {
+                const provinceName = line.getAttribute('data-province-line');
+                const data = provinceData[provinceName];
+                
+                if (data !== undefined) {
+                    line.style.display = 'block';
+                } else {
+                    line.style.display = 'none';
+                }
+            });
+            
+            // 更新指示点的显示/隐藏
+            document.querySelectorAll('.indicator-dot').forEach(dot => {
+                const provinceName = dot.getAttribute('data-province-dot');
+                const data = provinceData[provinceName];
+                
+                if (data !== undefined) {
+                    dot.style.display = 'block';
+                } else {
+                    dot.style.display = 'none';
+                }
+            });
+        }
+
+        // 颜色插值
+        function interpolateColor(color1, color2, factor) {
+            const hex1 = color1.replace('#', '');
+            const hex2 = color2.replace('#', '');
+            
+            const r1 = parseInt(hex1.substr(0, 2), 16);
+            const g1 = parseInt(hex1.substr(2, 2), 16);
+            const b1 = parseInt(hex1.substr(4, 2), 16);
+            
+            const r2 = parseInt(hex2.substr(0, 2), 16);
+            const g2 = parseInt(hex2.substr(2, 2), 16);
+            const b2 = parseInt(hex2.substr(4, 2), 16);
+            
+            const r = Math.round(r1 + (r2 - r1) * factor);
+            const g = Math.round(g1 + (g2 - g1) * factor);
+            const b = Math.round(b1 + (b2 - b1) * factor);
+            
+            return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+        }
+
+        // 显示提示信息
+        function showTooltip(event, provinceName) {
+            const infoPanel = document.getElementById('infoPanel');
+            const data = provinceData[provinceName];
+            
+            document.getElementById('selectedProvince').textContent = provinceName;
+            
+            if (data !== undefined) {
+                document.getElementById('selectedData').textContent = `数据值: ${data.value}`;
+                
+                let styleInfo = [];
+                if (data.fontSize) styleInfo.push(`字号: ${data.fontSize}px`);
+                if (data.fontColor) styleInfo.push(`字色: ${data.fontColor}`);
+                if (data.backgroundColor) styleInfo.push(`背景: ${data.backgroundColor}`);
+                
+                document.getElementById('selectedStyle').textContent = styleInfo.length > 0 ? 
+                    `样式: ${styleInfo.join(', ')}` : '样式: 默认';
+            } else {
+                document.getElementById('selectedData').textContent = '数据值: 无数据';
+                document.getElementById('selectedStyle').textContent = '样式: 默认';
+            }
+            
+            infoPanel.style.display = 'block';
+        }
+
+        // 隐藏提示信息
+        function hideTooltip() {
+            document.getElementById('infoPanel').style.display = 'none';
+        }
+
+        // 选择省份
+        function selectProvince(event, provinceName) {
+            const data = provinceData[provinceName];
+            let message = `${provinceName}\n`;
+            
+            if (data !== undefined) {
+                message += `数据值: ${data.value}\n`;
+                if (data.fontSize) message += `字号: ${data.fontSize}px\n`;
+                if (data.fontColor) message += `字色: ${data.fontColor}\n`;
+                if (data.backgroundColor) message += `背景色: ${data.backgroundColor}\n`;
+            } else {
+                message += '数据值: 无数据';
+            }
+            
+            alert(message);
+        }
+
+        // 清空数据
+        function clearData() {
+            document.getElementById('dataInput').value = '';
+            // 清空数据后不自动更新地图，等待用户点击更新按钮
+        }
+
+        // 下载地图
+        function downloadMap() {
+            const svg = document.getElementById('mapSvg');
+            const svgData = new XMLSerializer().serializeToString(svg);
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const img = new Image();
+            
+            canvas.width = 1000;
+            canvas.height = 650;
+            
+            img.onload = function() {
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0);
+                
+                const link = document.createElement('a');
+                link.download = 'china-map-ant.png';
+                link.href = canvas.toDataURL();
+                link.click();
+            };
+            
+            img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+        }
+
+        // 显示坐标面板
+        function showCoordinatePanel() {
+            document.getElementById('coordinatePanel').style.display = 'block';
+        }
+
+        // 隐藏坐标面板
+        function hideCoordinatePanel() {
+            document.getElementById('coordinatePanel').style.display = 'none';
+        }
+
+        // 处理鼠标移动事件
+        function handleMouseMove(event) {
+            const svg = event.currentTarget;
+            const rect = svg.getBoundingClientRect();
+            const params = svg.mapParams;
+            
+            if (!params) return;
+            
+            // 获取鼠标在SVG中的相对位置
+            const mouseX = event.clientX - rect.left;
+            const mouseY = event.clientY - rect.top;
+            
+            // 转换为SVG坐标系
+            const svgX = (mouseX / rect.width) * params.width;
+            const svgY = (mouseY / rect.height) * params.height;
+            
+            // 转换为地理坐标
+            const geoX = (svgX - params.offsetX) / params.scale + params.minX;
+            const geoY = params.maxY - ((svgY - params.offsetY) / params.scale);
+            
+            // 更新坐标显示
+            document.getElementById('mouseCoordinates').textContent = 
+                `X: ${Math.round(svgX)}, Y: ${Math.round(svgY)}`;
+            document.getElementById('geoCoordinates').textContent = 
+                `经度: ${geoX.toFixed(4)}, 纬度: ${geoY.toFixed(4)}`;
+        }
+
+        // 缩放功能
+        let currentZoom = 1;
+        let originalFontSizes = {};
+        
+        // 地图拖动功能变量
+        let isDragging = false;
+        let dragStartX = 0;
+        let dragStartY = 0;
+        let currentTranslateX = 0;
+        let currentTranslateY = 0;
+        
+        // 初始化地图拖动功能
+        function initMapDrag() {
+            const mapSvg = document.getElementById('mapSvg');
+            const mapWrapper = document.getElementById('mapWrapper');
+            
+            if (!mapSvg || !mapWrapper) return;
+            
+            mapSvg.addEventListener('mousedown', startDrag);
+            mapWrapper.addEventListener('mousemove', drag);
+            mapWrapper.addEventListener('mouseup', endDrag);
+            mapWrapper.addEventListener('mouseleave', endDrag);
+            
+            // 防止图片拖拽
+            mapSvg.addEventListener('dragstart', e => e.preventDefault());
+        }
+        
+        function startDrag(e) {
+            isDragging = true;
+            dragStartX = e.clientX;
+            dragStartY = e.clientY;
+            
+            // 获取当前的平移值
+            const mapSvg = document.getElementById('mapSvg');
+            const currentTransform = mapSvg.style.transform;
+            const translateMatch = currentTransform.match(/translate\(([^,]+)px,\s*([^)]+)px\)/);
+            
+            if (translateMatch) {
+                currentTranslateX = parseFloat(translateMatch[1]) || 0;
+                currentTranslateY = parseFloat(translateMatch[2]) || 0;
+            }
+            
+            mapSvg.style.cursor = 'grabbing';
+        }
+        
+        function drag(e) {
+            if (!isDragging) return;
+            
+            e.preventDefault();
+            
+            const deltaX = e.clientX - dragStartX;
+            const deltaY = e.clientY - dragStartY;
+            
+            const newTranslateX = currentTranslateX + deltaX;
+            const newTranslateY = currentTranslateY + deltaY;
+            
+            const mapSvg = document.getElementById('mapSvg');
+            mapSvg.style.transform = `translate(${newTranslateX}px, ${newTranslateY}px) scale(${currentZoom})`;
+        }
+        
+        function endDrag() {
+            if (!isDragging) return;
+            
+            isDragging = false;
+            
+            // 更新当前平移值
+            const mapSvg = document.getElementById('mapSvg');
+            const currentTransform = mapSvg.style.transform;
+            const translateMatch = currentTransform.match(/translate\(([^,]+)px,\s*([^)]+)px\)/);
+            
+            if (translateMatch) {
+                currentTranslateX = parseFloat(translateMatch[1]) || 0;
+                currentTranslateY = parseFloat(translateMatch[2]) || 0;
+            }
+            
+            mapSvg.style.cursor = 'grab';
+        }
+        
+        // 初始化缩放控制
+        function initZoomControl() {
+            const zoomSlider = document.getElementById('zoomSlider');
+            const zoomValue = document.getElementById('zoomValue');
+            
+            zoomSlider.addEventListener('input', function() {
+                currentZoom = parseFloat(this.value);
+                zoomValue.textContent = Math.round(currentZoom * 100) + '%';
+                applyZoom();
+            });
+        }
+        
+        // 应用缩放
+        function applyZoom() {
+            const mapSvg = document.getElementById('mapSvg');
+            if (mapSvg) {
+                // 保持当前的平移位置
+                const currentTransform = mapSvg.style.transform;
+                const translateMatch = currentTransform.match(/translate\(([^)]+)\)/);
+                const translatePart = translateMatch ? translateMatch[0] : 'translate(0px, 0px)';
+                
+                mapSvg.style.transform = `${translatePart} scale(${currentZoom})`;
+                mapSvg.style.transformOrigin = 'center center';
+            }
+        }
+        
+        // 重置缩放
+        function resetZoom() {
+            currentZoom = 1;
+            currentTranslateX = 0;
+            currentTranslateY = 0;
+            document.getElementById('zoomSlider').value = 1;
+            document.getElementById('zoomValue').textContent = '100%';
+            
+            const mapSvg = document.getElementById('mapSvg');
+            if (mapSvg) {
+                mapSvg.style.transform = 'translate(0px, 0px) scale(1)';
+                mapSvg.style.transformOrigin = 'center center';
+            }
+        }
+        
+        // 放大（步进5%）
+        function zoomIn() {
+            const zoomSlider = document.getElementById('zoomSlider');
+            const currentValue = parseFloat(zoomSlider.value);
+            const newValue = Math.min(3, currentValue + 0.05);
+            zoomSlider.value = newValue;
+            currentZoom = newValue;
+            document.getElementById('zoomValue').textContent = Math.round(currentZoom * 100) + '%';
+            applyZoom();
+        }
+        
+        // 缩小（步进5%）
+        function zoomOut() {
+            const zoomSlider = document.getElementById('zoomSlider');
+            const currentValue = parseFloat(zoomSlider.value);
+            const newValue = Math.max(0.5, currentValue - 0.05);
+            zoomSlider.value = newValue;
+            currentZoom = newValue;
+            document.getElementById('zoomValue').textContent = Math.round(currentZoom * 100) + '%';
+            applyZoom();
+        }
+        
+        // 字号调整功能
+        function adjustFontSize(delta) {
+            // 调整所有省份名称标签
+            document.querySelectorAll('.province-name').forEach(label => {
+                const currentSize = parseInt(label.style.fontSize) || 12;
+                const newSize = Math.max(8, Math.min(24, currentSize + delta));
+                label.style.fontSize = newSize + 'px';
+            });
+            
+            // 调整所有数据值标签
+            document.querySelectorAll('.province-value').forEach(label => {
+                const currentSize = parseInt(label.style.fontSize) || 10;
+                const newSize = Math.max(6, Math.min(22, currentSize + delta));
+                label.style.fontSize = newSize + 'px';
+            });
+            
+            // 调整默认字号输入框
+            const defaultFontSizeInput = document.getElementById('defaultFontSize');
+            const currentDefault = parseInt(defaultFontSizeInput.value) || 12;
+            const newDefault = Math.max(8, Math.min(20, currentDefault + delta));
+            defaultFontSizeInput.value = newDefault;
+        }
+        
+        // 重置字号
+        function resetFontSize() {
+            // 重置默认字号
+            document.getElementById('defaultFontSize').value = 12;
+            
+            // 只重置字号，不影响其他样式
+            const defaultFontSize = 12;
+            
+            // 重置所有省份名称标签字号
+            document.querySelectorAll('.province-name').forEach(label => {
+                const provinceName = label.getAttribute('data-province-label');
+                const data = provinceData[provinceName];
+                // 如果有自定义字号数据，保持自定义字号；否则使用默认字号
+                if (!data || !data.fontSize) {
+                    label.style.fontSize = defaultFontSize + 'px';
+                }
+            });
+            
+            // 重置所有数据值标签字号
+            document.querySelectorAll('.province-value').forEach(label => {
+                const provinceName = label.getAttribute('data-province-value');
+                const data = provinceData[provinceName];
+                // 如果有自定义字号数据，保持自定义字号；否则使用默认字号
+                if (!data || !data.fontSize) {
+                    label.style.fontSize = Math.max(8, defaultFontSize - 2) + 'px';
+                }
+            });
+        }
+        
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            loadGeoData();
+            initZoomControl();
+        });
+    </script>
+</body>
+</html>
