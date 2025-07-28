@@ -677,8 +677,10 @@
 
             svgElement = document.getElementById('mapSvg');
             renderMap();
-            // 初始化时应用默认样式，不解析数据
-            applyDefaultStyles();
+            
+            // 初始化时解析示例数据并更新地图
+            parseData();
+            updateMap();
         }
 
         // 渲染地图
